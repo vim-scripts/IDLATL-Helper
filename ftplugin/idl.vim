@@ -1,7 +1,12 @@
 " IDL functions
 " Author: Michael Geddes <michaelrgeddes@optushome.com.au>
-" Date: Jan 2003
-" Version: 1.3
+" Date: Feb 2003
+" Version: 1.4
+"
+" The interface stub requires $MSDEVDIR to be set in order to find uuidgen.  It WILL default to:
+" 'C:\Program Files\Microsoft Visual Studio\common\msdev98' - which is
+" probably going to be ok.  This is the same environment variable set by
+" vcvars.bat
 "
 " <localleader>si - Stub Interface
 "   Stub an interface given an interface name. Supports the following lines:
@@ -46,6 +51,11 @@
 "   Fix id() support
 " 1.3:
 "   Fix support for adding [in] [in,out] to parameters
+" 1.4:
+"   Fixed default MSDEV path.
+"   Cleaned up handling of functions
+"   Cleaned up handling of id() for 3 part properties.
+"
 "
 
 " if !exists('DoingSOURCE')
@@ -423,7 +433,7 @@ fun! s:GetCoClassList()
 endfun
 
 if !exists('$MSDEVDIR')
-    let $MSDEVDIR='C:\Program Files\Microsoft Visual Studio'
+    let $MSDEVDIR='C:\Program Files\Microsoft Visual Studio\common\msdev98'
 endif
 if !exists('g:UUIDGEN')
     let g:UUIDGEN=fnamemodify($MSDEVDIR,':h').'\Tools\uuidgen.exe'
@@ -678,7 +688,7 @@ fun! s:PutId()
   endif
   let hline=getline(here)
 
-  if hline !~'^\s*[' && getline(here-1)=~ '^\s*['
+  if hline !~'^\s*[' && getline(here-1)=~ '^\s*[' && getline(here-1) !~ '].*('
     let here=here-1
     let hline=getline(here)
   endif
@@ -730,16 +740,21 @@ fun! s:PutId()
     endwhile
     if word != ""
       let reA='\<'.word.'('
-      exe here+1.'/'.reA.'/ mark z'
-      let nextone=line("'z")
-    
-      if nextone!=here && nextone > top && nextone < here+10
-        exe nextone.'?prop..t\(ref\)\=? mark z'
-        let nextprop=line("'z")
-        if (nextone > here && nextprop > here) || (nextone < here && nextprop > top )
-          exe nextprop.cmd
-        endif
-      endif
+
+      let h=top+1
+      while h < bottom
+        if h != here && getline(h) =~ reA
+           let i=h
+           while i> top
+             if getline(i) =~ '\<prop..t\(ref\)\='
+               exe i.cmd
+               break
+             endif
+             let i=i-1
+           endwhile
+         endif
+         let h=h+1
+      endwhile
     endif
   endif
   exe orig
@@ -1192,7 +1207,15 @@ endfun
 
 
 fun! s:IDLGenerateIDLStub()
+
   call s:ConvertTypes()
+  let reFun='^\(\s*\)\<\(\%(SAFEARRAY([^)]*)\|\k\+\>\s*\([*&]\)\=\)\)\=\(\(\k\+\)\s*(\(.*\)\))[^)]*;\=\s*$'
+  let txt=getline('.') 
+  if match(txt,reFun)== -1
+      echoe 'Did not recognise line as a function'
+      return
+  endif
+
   let x='\([(,]\)\s*[^[]\(\<\(SAFEARRAY([^)]*)\)\=[^,)]\+\)'
   let done=0
   while !done
@@ -1217,16 +1240,9 @@ fun! s:IDLGenerateIDLStub()
   endwhile
   s/\[out\]/[in,out]/ge
 
-"  let reA='^\s*\<\(\%(SAFEARRAY([^)]*)\|[^(]\{-1,}\)\(\s*\*\)\=\)\=\s*\(\<\k\+\>\)\(\s*(\s*\([^)]*\)\s*)\)\='
-  let x='^\(\s*\)\<\(\%(SAFEARRAY([^)]*)\|\k\+\(\s*[*&]\)\=\)\)\=\s\+\(\(\k\+\)\s*(\(.*\)\))[^)]*;\=\s*$'
-  let txt=getline('.') 
-  if match(txt,x)== -1
-      echoe 'Did not recognise line as a function'
-      return
-  endif
 
-  let type=substitute(txt,x,'\2','')
-  let arguments=substitute(txt,x,'\6','')
+  let type=substitute(txt,reFun,'\2','')
+  let arguments=substitute(txt,reFun,'\6','')
   if type=="" || type=="void" || type=="[cC]Error" || type=="HRESULT" || type=="VOID"
     let lastarg=""
   else
@@ -1238,10 +1254,10 @@ fun! s:IDLGenerateIDLStub()
       let lastarg=', '.lastarg
     endif
   endif
-  exe 's/'.x.'/\1HRESULT \u\4'.lastarg.');'
+  exe 's/'.reFun.'/\1HRESULT \u\4'.lastarg.');'
   let comment=GetComment(line('.'))
   if comment==""
-    let comment = substitute(substitute(txt,x,'\5',''),'\C\([a-z]\)\([A-Z]\)','\1 \l\2','g').' method'
+    let comment = substitute(substitute(txt,reFun,'\5',''),'\C\([a-z]\)\([A-Z]\)','\1 \l\2','g').' method'
   endif
   if comment!="" && getline(line('.')-1) !~ '\['
     set paste
