@@ -1,7 +1,7 @@
 " IDL functions
 " Author: Michael Geddes <michaelrgeddes@optushome.com.au>
 " Date: Feb 2003
-" Version: 1.4
+" Version: 1.5
 "
 " The interface stub requires $MSDEVDIR to be set in order to find uuidgen.  It WILL default to:
 " 'C:\Program Files\Microsoft Visual Studio\common\msdev98' - which is
@@ -14,6 +14,13 @@
 "   IMyInterface : IUnknown
 "   dispinterface IMyInterface
 "   _IMyInterfaceEvent
+"
+" <localleader>sl - Stub Library
+"   Prompts for a library name.
+"
+" <localleader>sc - Stub class
+"   Prompts for a class, interface and can add a basic implementation to ATL
+"   projects.
 "
 " <localleader>p  - Make a property
 "   Makes a property from a c++ style declaration (const at the end does read-only
@@ -55,6 +62,11 @@
 "   Fixed default MSDEV path.
 "   Cleaned up handling of functions
 "   Cleaned up handling of id() for 3 part properties.
+" 1.5:
+"   Remove absolute dependence on SourceSafe script.
+"   Remove dependence on external function existing
+"   Fix up some of the ATL function (I haven't used them for yonks)
+"   Add some more mapps.
 "
 "
 
@@ -71,10 +83,98 @@ if &filetype=='cpp'
     map <buffer> <localleader>C :call <SID>IDLToCpp()<cr>
 else
     map <buffer> <localleader>si :call <SID>IDLGenInterface()<cr>
+    map <buffer> <localleader>sc :call <SID>IDLAddClassDefinition()<cr>
+    map <buffer> <localleader>sl :call <SID>IDLDeclareLibrary(input("Library Name:"))<cr>
     map <buffer> <localleader>p :call <SID>IDLProperty()<cr>
     map <buffer> <localleader>P :call <SID>IDLGenerateIDLStub()<CR>
     map <buffer> <localleader>i :call <SID>PutId()<cr>
+    map <buffer> <localleader>mg :call <SID>ModifyGUID()<cr>
+
 endif
+
+" Get the commont below the given line
+" Optional second argument - kill the line (default not to)
+" Optional third argument - context to search for comment (default 2)
+fun! s:GetComment(line,...)
+    norm mz
+    let mz=line("'z")
+
+    let killline = a:0 > 0 && a:1 
+    let limit=2
+    if a:0>1
+      let limit=a:2
+    endif
+
+    let cline=a:line
+    let done=0
+    while !done
+      let nextline=getline(cline)
+      if nextline =~ '^\s*/[/*]'
+        let done=1
+      else
+        let cline=cline+1
+      endif
+      let limit=limit-1
+      if !done && limit==0
+        return ""
+      endif
+    endwhile
+    if nextline =~ '^\s*//'
+"       let x='^\s*///*\s*\(.*\)$'
+        let x='^\s*//\s*\(.*\)$'
+        let comment=""
+        while nextline =~ x
+          if comment!=""
+            let comment=comment." "
+          endif
+          let comment=comment.substitute(nextline,x,'\1','')
+          if killline
+            exe cline.'d'
+          else
+            let cline=cline+1
+          endif
+          let nextline=getline(cline)
+        endwhile
+    elseif nextline =~ '^\s*/\*'
+        let comment=substitute(nextline,'^\s*/\*\=\s*\(.*\)\(\*/\)\=\s*','\1','')
+        if killline
+          exe cline.'d'
+        else
+          let cline=cline+1
+        endif
+        let nextline=getline(cline)
+        let finish=a:line+50
+        if finish> line('$')
+          let finish = line('$')
+        endif
+        let done=0
+        while !done && cline <= finish
+          if comment!~' $'
+            let comment=comment.' '
+          endif
+          if nextline =~ '\*/'
+            let nextline=substitute(nextline,'\s*\*/\s*$','','')
+            let done=1
+          endif
+          let comment=comment.substitute(nextline,'^\s*\*\=\s*\(.*\)\s*$','\1','')
+          if killline
+            exe cline.'d'
+          else
+            let cline=cline+1
+          endif
+          let nextline=getline(cline)
+        endwhile
+    else
+        let comment=""
+    endif
+    if line("'z")==0
+      exe mz
+    else
+      norm `z
+    endif
+    return substitute(comment,'^\s*[/!]<\=\s*','','')
+	" remove doxygen
+endfun
 
 if exists(':Bmenu')
     exe FindBufferSID()
@@ -576,7 +676,7 @@ function! s:IDLProperty()
       endif
     endif
 
-    let comment=GetComment(line('.'))
+    let comment=s:GetComment(line('.'))
     if comment !~ '^\s*$'
       let help='helpstring("'.comment.'")'
     else
@@ -841,8 +941,8 @@ fun! s:CreateRGS(progid,class,filename)
   if filereadable(a:filename)
       return "Exists"
   else
-    let coclass=GetCoClassID(a:class)
-    let tlibid=GetTypelibID()
+    let coclass=s:GetCoClassID(a:class)
+    let tlibid=s:GetTypelibID()
     if coclass=="" || tlibid==""
       return "Cancelled"
     endif
@@ -884,9 +984,13 @@ endfun
 
 fun! s:QueryCheckout()
   if &ro 
+    if ! exists(':SCheckout')
+      let res = confirm("File is ReadOnly!","&Ok")
+      return 0
+    endif
     let res=confirm("File is ReadOnly, Check Out of SourceSafe?","&Yes\n&Cancel",1,"Question")
     if res==1
-      norm ,sk
+      SCheckout
       return !&ro
     endif
     return 0
@@ -1255,7 +1359,7 @@ fun! s:IDLGenerateIDLStub()
     endif
   endif
   exe 's/'.reFun.'/\1HRESULT \u\4'.lastarg.');'
-  let comment=GetComment(line('.'))
+  let comment=s:GetComment(line('.'))
   if comment==""
     let comment = substitute(substitute(txt,reFun,'\5',''),'\C\([a-z]\)\([A-Z]\)','\1 \l\2','g').' method'
   endif
