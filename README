@@ -1,0 +1,19 @@
+This is a mirror of http://www.vim.org/scripts/script.php?script_id=546
+
+NB: This is designed for Microsoft idl files.  Suggestions for extending it are welcome.
+
+* Create idl files - adds guids (using guidgen)
+   - Add interfaces,enums (with guids)
+   - Coclass wizard to create cpp files for ATL  (some support for comet)
+* Easy Method and property creation
+   change  
+        long MyFunc( string arg1, bool *arg2)
+  to
+        HRESULT MyFunc( [in] BSTR arg1, [in,out] VARIANT_BOOL *arg2, long *ret);
+* Convert IDL functions to their c++ equivalents.
+    - Change helpstring() to comments
+
+* Modify guids quickly!
+* add a unique id()  to methods and properties.
+
+
