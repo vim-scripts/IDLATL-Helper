@@ -1,7 +1,7 @@
 " IDL functions
 " Author: Michael Geddes <michaelrgeddes@optushome.com.au>
 " Date: Jan 2003
-" Version: 1.2
+" Version: 1.3
 "
 " <localleader>si - Stub Interface
 "   Stub an interface given an interface name. Supports the following lines:
@@ -44,6 +44,8 @@
 "   Extend support for classes
 " 1.2:
 "   Fix id() support
+" 1.3:
+"   Fix support for adding [in] [in,out] to parameters
 "
 
 " if !exists('DoingSOURCE')
@@ -1191,7 +1193,7 @@ endfun
 
 fun! s:IDLGenerateIDLStub()
   call s:ConvertTypes()
-  let x='\([(,]\)\s*\(\<SAFEARRAY([^)]*)[^[][^,)]\+\)'
+  let x='\([(,]\)\s*[^[]\(\<\(SAFEARRAY([^)]*)\)\=[^,)]\+\)'
   let done=0
   while !done
     let arg=substitute(matchstr(getline('.'),x),x,'\2','')
